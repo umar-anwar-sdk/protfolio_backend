@@ -14,6 +14,7 @@ const sections = [
   { name: "Projects", icon: Layers3, slug: "projects" },
   { name: "Social Links", icon: LinkIcon, slug: "social-links" },
   { name: "Messages", icon: MessageSquareText, slug: "messages" },
+  { name: "Contact Information", icon: MessageSquareText, slug: "contact-information" },
   { name: "Visitors", icon: Users, slug: "visitors" },
   { name: "CV", icon: FileText, slug: "cv" },
   { name: "Settings", icon: Settings, slug: "settings" },

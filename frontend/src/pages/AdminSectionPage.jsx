@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, Pencil, Trash2, Save, X, Code2, Brain, Database, Globe, Server, Cpu, Cloud, ShieldCheck, Book, Briefcase, Award } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Save, X, Code2, Brain, Database, Globe, Server, Cpu, Cloud, ShieldCheck, Book, Briefcase, Award, Search, Mail, CheckCheck, Clock3, Phone, MapPin } from "lucide-react";
 import { getApiBaseUrl, getAssetUrl } from "@/api/client";
 import { createAdminResource, deleteAdminResource, fetchAdminResource, updateAdminResource } from "@/services/adminService";
 
@@ -14,6 +14,7 @@ const sectionConfig = {
   projects: { label: "Projects", endpoint: "/api/admin/projects/" },
   "social-links": { label: "Social Links", endpoint: "/api/admin/social-links/" },
   messages: { label: "Messages", endpoint: "/api/admin/messages/" },
+  "contact-information": { label: "Contact Information", endpoint: "/api/admin/contact-information/" },
   visitors: { label: "Visitors", endpoint: "/api/admin/visitors/" },
   cv: { label: "CV", endpoint: "/api/admin/profile/" },
   settings: { label: "Settings", endpoint: "/api/admin/profile/" },
@@ -90,6 +91,13 @@ const emptyForms = {
     admin_notes: "",
     status: "new",
   },
+  "contact-information": {
+    email: "",
+    phone: "",
+    location: "",
+    availability_text: "",
+    is_active: true,
+  },
   visitors: {},
   cv: {},
   settings: {},
@@ -105,6 +113,7 @@ const requiredFieldsBySection = {
   experience: ["period", "role", "company", "description"],
   education: ["institution", "degree"],
   projects: ["title", "short_description", "description"],
+  "contact-information": ["email", "phone", "location", "availability_text"],
 };
 
 const numberFieldNames = new Set(["years_experience", "sort_order", "order", "min", "max"]);
@@ -129,7 +138,7 @@ function getFieldType(fieldName, value) {
   if (emailFieldNames.has(fieldName)) return "email";
   if (urlFieldNames.has(fieldName)) return "url";
   if (fieldName.toLowerCase().includes("date")) return "date";
-  if (fieldName.toLowerCase().includes("phone") || numberFieldNames.has(fieldName)) return "number";
+  if (numberFieldNames.has(fieldName)) return "number";
   if (typeof value === "boolean") return "checkbox";
   if (textareaFieldNames.has(fieldName)) return "textarea";
   return "text";
@@ -165,6 +174,472 @@ function validateFieldValue(fieldName, value, section) {
   }
 
   return "";
+}
+
+function getInitials(name) {
+  return (name || "?")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "?";
+}
+
+function formatMessageTimestamp(value) {
+  if (!value) return "Unknown time";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown time";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function AdminMessagesPanel() {
+  const [messages, setMessages] = useState([]);
+  const [selectedMessageId, setSelectedMessageId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadMessages = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await fetchAdminResource("/api/admin/messages/");
+      const normalized = Array.isArray(data) ? data : data?.results || [];
+      setMessages(normalized);
+      setSelectedMessageId((current) => {
+        if (current && normalized.some((item) => item.id === current)) {
+          return current;
+        }
+        return normalized[0]?.id ?? null;
+      });
+    } catch (err) {
+      setError(err.message || "Unable to load messages.");
+      setMessages([]);
+      setSelectedMessageId(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMessages();
+  }, []);
+
+  const filteredMessages = (messages || []).filter((message) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    const haystack = [message.name, message.email, message.subject, message.message]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(q);
+  });
+
+  const selectedMessage = (filteredMessages || []).find((message) => message.id === selectedMessageId)
+    || (messages || []).find((message) => message.id === selectedMessageId)
+    || filteredMessages[0]
+    || null;
+
+  useEffect(() => {
+    if (!filteredMessages.length) {
+      setSelectedMessageId(null);
+      return;
+    }
+
+    if (!selectedMessageId || !filteredMessages.some((message) => message.id === selectedMessageId)) {
+      setSelectedMessageId(filteredMessages[0].id);
+    }
+  }, [filteredMessages, selectedMessageId]);
+
+  const updateMessageState = async (messageId, patch) => {
+    const currentMessage = messages.find((item) => item.id === messageId);
+    if (!currentMessage) return;
+
+    const nextPatch = {
+      is_read: patch.is_read ?? currentMessage.is_read,
+      status: patch.status ?? currentMessage.status,
+    };
+
+    const updated = await updateAdminResource(`/api/admin/messages/${messageId}/`, nextPatch);
+    setMessages((prev) => prev.map((item) => (item.id === messageId ? { ...item, ...updated } : item)));
+  };
+
+  const handleDelete = async (messageId) => {
+    if (!window.confirm("Delete this message?")) return;
+
+    try {
+      await deleteAdminResource(`/api/admin/messages/${messageId}/`);
+      setMessages((prev) => prev.filter((item) => item.id !== messageId));
+    } catch (err) {
+      setError(err.message || "Unable to delete message.");
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <header className="glass rounded-3xl border border-border p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => window.history.back()} className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground">
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-primary">Admin</p>
+                <h1 className="mt-2 text-2xl font-bold text-secondary-foreground">Messages</h1>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {error && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>
+        )}
+
+        <section className="glass overflow-hidden rounded-3xl border border-border">
+          <div className="flex items-center gap-3 border-b border-border bg-surface/50 px-4 py-3 sm:px-5">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search messages..."
+              className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+            />
+          </div>
+
+          {loading ? (
+            <div className="p-8 text-sm text-muted-foreground">Loading messages…</div>
+          ) : (
+            <div className="grid min-h-[620px] lg:grid-cols-[360px_minmax(0,1fr)]">
+              <aside className="border-b border-border bg-surface/30 lg:border-b-0 lg:border-r">
+                <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                  <p className="text-sm font-medium text-secondary-foreground">Conversations</p>
+                  <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-xs text-primary">{filteredMessages.length}</span>
+                </div>
+
+                <div className="max-h-[620px] overflow-y-auto">
+                  {filteredMessages.length === 0 ? (
+                    <div className="flex h-full min-h-[260px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                      No messages yet
+                    </div>
+                  ) : (
+                    filteredMessages.map((message) => {
+                      const isSelected = selectedMessage?.id === message.id;
+                      const isUnread = !message.is_read;
+
+                      return (
+                        <button
+                          type="button"
+                          key={message.id}
+                          onClick={() => setSelectedMessageId(message.id)}
+                          className={`flex w-full items-start gap-3 border-b border-border px-4 py-4 text-left transition ${isSelected ? "bg-primary/10" : "bg-transparent hover:bg-surface/70"}`}
+                        >
+                          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
+                            {getInitials(message.name)}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="truncate text-sm font-semibold text-secondary-foreground">{message.name}</p>
+                              {isUnread && <span className="h-2.5 w-2.5 rounded-full bg-primary" />}
+                            </div>
+                            <p className="mt-1 truncate text-xs text-muted-foreground">{message.email}</p>
+                            <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{message.message}</p>
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-muted-foreground">{formatMessageTimestamp(message.created_at)}</span>
+                              <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{message.status}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </aside>
+
+              <section className="flex min-h-[500px] flex-col">
+                {selectedMessage ? (
+                  <>
+                    <header className="flex flex-col gap-3 border-b border-border bg-surface/30 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
+                          {getInitials(selectedMessage.name)}
+                        </div>
+                        <div>
+                          <h2 className="text-lg font-semibold text-secondary-foreground">{selectedMessage.name}</h2>
+                          <p className="text-sm text-muted-foreground">{selectedMessage.email}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => updateMessageState(selectedMessage.id, { is_read: !selectedMessage.is_read, status: selectedMessage.is_read ? "new" : "replied" })}
+                          className="rounded-xl border border-border bg-surface px-3 py-2 text-xs text-foreground"
+                        >
+                          {selectedMessage.is_read ? "Mark as unread" : "Mark as read"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(selectedMessage.id)}
+                          className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </header>
+
+                    <div className="flex-1 space-y-5 overflow-y-auto bg-background px-4 py-5 sm:px-6">
+                      {selectedMessage.subject && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Mail className="h-4 w-4 text-primary" />
+                          <span className="font-medium text-secondary-foreground">Subject:</span> {selectedMessage.subject}
+                        </div>
+                      )}
+
+                      <div className="space-y-4">
+                        <div className="max-w-2xl rounded-2xl border border-border bg-surface px-4 py-3 shadow-sm">
+                          <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">{selectedMessage.message}</p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                          <div className="inline-flex items-center gap-1.5">
+                            <Clock3 className="h-3.5 w-3.5" />
+                            {formatMessageTimestamp(selectedMessage.created_at)}
+                          </div>
+                          <div className="inline-flex items-center gap-1.5">
+                            <CheckCheck className="h-3.5 w-3.5" />
+                            {selectedMessage.is_read ? "Read" : "Unread"}
+                          </div>
+                          <div className="inline-flex items-center gap-1.5">
+                            <span className="inline-block rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{selectedMessage.status}</span>
+                          </div>
+                        </div>
+
+                        {(selectedMessage.admin_notes || selectedMessage.email || selectedMessage.subject) && (
+                          <div className="rounded-2xl border border-border bg-surface/50 p-4">
+                            <div className="mb-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">Message details</div>
+                            <div className="space-y-2 text-sm text-foreground">
+                              <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-primary" /> {selectedMessage.email}</div>
+                              {selectedMessage.subject && <div className="flex items-center gap-2"><span className="text-primary">•</span> {selectedMessage.subject}</div>}
+                              {selectedMessage.admin_notes && <div className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-muted-foreground">{selectedMessage.admin_notes}</div>}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">No message selected.</div>
+                )}
+              </section>
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function ContactInformationAdminForm() {
+  const [form, setForm] = useState({
+    email: "",
+    phone: "",
+    location: "",
+    availability_text: "",
+    is_active: true,
+  });
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [exists, setExists] = useState(false);
+
+  const loadContactInfo = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchAdminResource("/api/admin/contact-information/");
+      const next = data || form;
+      setForm({
+        email: next.email || "",
+        phone: next.phone || "",
+        location: next.location || "",
+        availability_text: next.availability_text || "",
+        is_active: next.is_active ?? true,
+      });
+      setExists(Boolean(next && next.id));
+    } catch (err) {
+      setExists(false);
+      setForm({
+        email: "",
+        phone: "",
+        location: "",
+        availability_text: "",
+        is_active: true,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadContactInfo();
+  }, []);
+
+  const updateField = (name, value) => {
+    setForm((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: "" }));
+  };
+
+  const validateForm = () => {
+    const nextErrors = {};
+    if (!form.email?.trim()) nextErrors.email = "Email is required";
+    if (!form.phone?.trim()) nextErrors.phone = "Phone is required";
+    if (!form.location?.trim()) nextErrors.location = "Location is required";
+    if (!form.availability_text?.trim()) nextErrors.availability_text = "Availability is required";
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (form.email && !emailPattern.test(form.email.trim())) {
+      nextErrors.email = "Please enter a valid email address";
+    }
+
+    return nextErrors;
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const nextErrors = validateForm();
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setSaving(true);
+    try {
+      const payload = { ...form, email: form.email.trim(), phone: form.phone.trim(), location: form.location.trim(), availability_text: form.availability_text.trim() };
+      if (exists) {
+        await updateAdminResource("/api/admin/contact-information/", payload);
+      } else {
+        await createAdminResource("/api/admin/contact-information/", payload);
+        setExists(true);
+      }
+      await loadContactInfo();
+    } catch (err) {
+      const apiErrors = err?.fields || {};
+      const normalized = {};
+      Object.entries(apiErrors).forEach(([field, value]) => {
+        normalized[field] = Array.isArray(value) ? value[0] : String(value);
+      });
+      setErrors((prev) => ({ ...prev, ...normalized }));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6">
+      <div className="mx-auto max-w-4xl space-y-6">
+        <header className="glass rounded-3xl border border-border p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => window.history.back()} className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground">
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-primary">Admin</p>
+                <h1 className="mt-2 text-2xl font-bold text-secondary-foreground">Contact Information</h1>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <section className="glass rounded-3xl border border-border p-6">
+          {loading ? (
+            <div className="text-sm text-muted-foreground">Loading contact information…</div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-sm text-muted-foreground">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.2em] text-muted-foreground">Email</span>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => updateField("email", e.target.value)}
+                    className={`w-full rounded-xl border ${errors.email ? "border-red-500/60" : "border-border"} bg-surface px-4 py-3 text-foreground outline-none focus:border-primary`}
+                    placeholder="hello@example.com"
+                  />
+                </label>
+                {errors.email && <div className="mt-2 text-xs text-red-300">{errors.email}</div>}
+              </div>
+
+              <div>
+                <label className="block text-sm text-muted-foreground">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.2em] text-muted-foreground">Phone</span>
+                  <input
+                    type="text"
+                    value={form.phone}
+                    onChange={(e) => updateField("phone", e.target.value)}
+                    className={`w-full rounded-xl border ${errors.phone ? "border-red-500/60" : "border-border"} bg-surface px-4 py-3 text-foreground outline-none focus:border-primary`}
+                    placeholder="+92 XXX XXXXXXX"
+                  />
+                </label>
+                {errors.phone && <div className="mt-2 text-xs text-red-300">{errors.phone}</div>}
+              </div>
+
+              <div>
+                <label className="block text-sm text-muted-foreground">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.2em] text-muted-foreground">Location</span>
+                  <input
+                    type="text"
+                    value={form.location}
+                    onChange={(e) => updateField("location", e.target.value)}
+                    className={`w-full rounded-xl border ${errors.location ? "border-red-500/60" : "border-border"} bg-surface px-4 py-3 text-foreground outline-none focus:border-primary`}
+                    placeholder="Pakistan"
+                  />
+                </label>
+                {errors.location && <div className="mt-2 text-xs text-red-300">{errors.location}</div>}
+              </div>
+
+              <div>
+                <label className="block text-sm text-muted-foreground">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.2em] text-muted-foreground">Availability</span>
+                  <textarea
+                    rows={4}
+                    value={form.availability_text}
+                    onChange={(e) => updateField("availability_text", e.target.value)}
+                    className={`w-full rounded-xl border ${errors.availability_text ? "border-red-500/60" : "border-border"} bg-surface px-4 py-3 text-foreground outline-none focus:border-primary`}
+                    placeholder="Available for freelance projects"
+                  />
+                </label>
+                {errors.availability_text && <div className="mt-2 text-xs text-red-300">{errors.availability_text}</div>}
+              </div>
+
+              <label className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.is_active)}
+                  onChange={(e) => updateField("is_active", e.target.checked)}
+                />
+                <span>Active</span>
+              </label>
+
+              <div className="flex justify-end">
+                <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-medium text-primary-foreground disabled:opacity-70">
+                  <Save className="h-4 w-4" />
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      </div>
+    </main>
+  );
 }
 
 export function AdminSectionPage() {
@@ -753,6 +1228,14 @@ export function AdminSectionPage() {
         )}
       </div>
     );
+  }
+
+  if (section === "messages") {
+    return <AdminMessagesPanel />;
+  }
+
+  if (section === "contact-information") {
+    return <ContactInformationAdminForm />;
   }
 
   return (

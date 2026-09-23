@@ -95,9 +95,9 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = '/static/'
-STATIC_ROOT = Path(os.getenv('STATIC_ROOT', '/tmp/portfolio_static'))
+STATIC_ROOT = Path(os.getenv('STATIC_ROOT') or str(BASE_DIR / 'staticfiles'))
 MEDIA_URL = '/media/'
-MEDIA_ROOT = Path(os.getenv('MEDIA_ROOT', '/tmp/portfolio_media'))
+MEDIA_ROOT = Path(os.getenv('MEDIA_ROOT') or str(BASE_DIR / 'media'))
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
