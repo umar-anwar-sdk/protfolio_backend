@@ -3,10 +3,11 @@ import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const defaultNavLinks = [
-  { href: "#about", label: "About" },
-  { href: "#projects", label: "Projects" },
-  { href: "#experience", label: "Experience" },
-  { href: "#testimonials", label: "Testimonials" },
+  { href: "/#about", label: "About" },
+  { href: "/projects", label: "Projects" },
+  { href: "/#experience", label: "Experience" },
+  { href: "/#testimonials", label: "Testimonials" },
+  { href: "/#contact", label: "Contact Us" },
 ];
 
 export const Navbar = ({ profile, socialLinks = [] }) => {
@@ -32,7 +33,7 @@ export const Navbar = ({ profile, socialLinks = [] }) => {
     .slice(0, 2)
     .toUpperCase();
 
-  const contactHref = normalizedSocialLinks.find((link) => link.platform === "linkedin")?.url || "#contact";
+  const contactHref = normalizedSocialLinks.find((link) => link.platform === "linkedin")?.url || "/#contact";
 
   return (
     <header

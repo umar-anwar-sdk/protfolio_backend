@@ -23,6 +23,14 @@ class ContactAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['email'], 'hello@example.com')
 
+    def test_contact_info_endpoint_returns_whatsapp_number(self):
+        self.contact_info.whatsapp_number = '923001234567'
+        self.contact_info.save(update_fields=['whatsapp_number'])
+
+        response = self.client.get('/api/contact/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['whatsapp_number'], '923001234567')
+
     def test_contact_message_create_endpoint_accepts_valid_data(self):
         payload = {
             'name': 'Jane Doe',
@@ -94,8 +102,9 @@ class ContactAPITests(APITestCase):
         from unittest.mock import patch
         with patch('apps.contact.views.EmailMessage.send', side_effect=Exception('SMTP failure')):
             response = self.client.post('/api/contact/', payload, format='json')
-        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(ContactMessage.objects.filter(email='jane@example.com').count(), 1)
+        self.assertIn('email notification', response.data['detail'])
 
     def test_contact_info_missing_returns_404(self):
         ContactInfo.objects.all().delete()

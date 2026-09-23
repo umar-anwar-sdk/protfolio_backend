@@ -4,6 +4,7 @@ from django.db import models
 class ContactInfo(models.Model):
     email = models.EmailField()
     phone = models.CharField(max_length=50)
+    whatsapp_number = models.CharField(max_length=30, blank=True, default='')
     location = models.CharField(max_length=150)
     availability_text = models.TextField(default='I\'m currently open to new opportunities and exciting projects.')
     is_active = models.BooleanField(default=True)

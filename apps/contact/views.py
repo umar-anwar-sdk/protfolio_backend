@@ -61,8 +61,12 @@ class ContactAPIView(PublicPortfolioAPIViewMixin, generics.GenericAPIView):
             send_contact_email(message)
         except Exception as exc:
             return Response(
-                {'detail': 'Message saved successfully, but the email notification could not be sent.', 'error': str(exc)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {
+                    'detail': 'Message saved successfully, but the email notification could not be sent.',
+                    'error': str(exc),
+                    'message_id': message.id,
+                },
+                status=status.HTTP_201_CREATED,
             )
 
         return Response(
@@ -94,18 +98,28 @@ class ContactMessageCreateAPIView(PublicPortfolioAPIViewMixin, generics.CreateAP
         try:
             send_contact_email(message)
         except Exception as exc:
-            raise RuntimeError(f'Email delivery failed: {exc}') from exc
-        return message
+            return {
+                'message': message,
+                'email_error': str(exc),
+            }
+        return {'message': message}
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        try:
-            self.perform_create(serializer)
-        except RuntimeError as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        result = self.perform_create(serializer)
+        message = result['message']
+        if 'email_error' in result:
+            return Response(
+                {
+                    'detail': 'Message saved successfully, but the email notification could not be sent.',
+                    'error': result['email_error'],
+                    'message_id': message.id,
+                },
+                status=status.HTTP_201_CREATED,
+            )
 
         return Response(
-            {'detail': 'Message sent successfully.'},
+            {'detail': 'Message sent successfully.', 'message_id': message.id},
             status=status.HTTP_201_CREATED,
         )

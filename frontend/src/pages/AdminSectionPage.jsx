@@ -94,6 +94,7 @@ const emptyForms = {
   "contact-information": {
     email: "",
     phone: "",
+    whatsapp_number: "",
     location: "",
     availability_text: "",
     is_active: true,
@@ -469,6 +470,7 @@ function ContactInformationAdminForm() {
       setForm({
         email: next.email || "",
         phone: next.phone || "",
+        whatsapp_number: next.whatsapp_number || "",
         location: next.location || "",
         availability_text: next.availability_text || "",
         is_active: next.is_active ?? true,
@@ -479,6 +481,7 @@ function ContactInformationAdminForm() {
       setForm({
         email: "",
         phone: "",
+        whatsapp_number: "",
         location: "",
         availability_text: "",
         is_active: true,
@@ -509,6 +512,10 @@ function ContactInformationAdminForm() {
       nextErrors.email = "Please enter a valid email address";
     }
 
+    if (form.whatsapp_number && !/^\+?[0-9\s-]{7,20}$/.test(form.whatsapp_number.trim())) {
+      nextErrors.whatsapp_number = "Please enter a valid WhatsApp number";
+    }
+
     return nextErrors;
   };
 
@@ -520,7 +527,14 @@ function ContactInformationAdminForm() {
 
     setSaving(true);
     try {
-      const payload = { ...form, email: form.email.trim(), phone: form.phone.trim(), location: form.location.trim(), availability_text: form.availability_text.trim() };
+      const payload = {
+        ...form,
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        whatsapp_number: form.whatsapp_number.trim(),
+        location: form.location.trim(),
+        availability_text: form.availability_text.trim(),
+      };
       if (exists) {
         await updateAdminResource("/api/admin/contact-information/", payload);
       } else {
@@ -589,6 +603,20 @@ function ContactInformationAdminForm() {
                   />
                 </label>
                 {errors.phone && <div className="mt-2 text-xs text-red-300">{errors.phone}</div>}
+              </div>
+
+              <div>
+                <label className="block text-sm text-muted-foreground">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.2em] text-muted-foreground">WhatsApp Number</span>
+                  <input
+                    type="text"
+                    value={form.whatsapp_number}
+                    onChange={(e) => updateField("whatsapp_number", e.target.value)}
+                    className={`w-full rounded-xl border ${errors.whatsapp_number ? "border-red-500/60" : "border-border"} bg-surface px-4 py-3 text-foreground outline-none focus:border-primary`}
+                    placeholder="+92 300 1234567"
+                  />
+                </label>
+                {errors.whatsapp_number && <div className="mt-2 text-xs text-red-300">{errors.whatsapp_number}</div>}
               </div>
 
               <div>

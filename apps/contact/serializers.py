@@ -6,7 +6,7 @@ from .models import ContactInfo, ContactMessage
 class ContactInfoSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContactInfo
-        fields = ['id', 'email', 'phone', 'location', 'availability_text', 'is_active', 'updated_at']
+        fields = ['id', 'email', 'phone', 'whatsapp_number', 'location', 'availability_text', 'is_active', 'updated_at']
 
 
 class ContactMessageSerializer(serializers.ModelSerializer):

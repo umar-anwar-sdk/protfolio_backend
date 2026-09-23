@@ -98,6 +98,8 @@ STATIC_URL = '/static/'
 STATIC_ROOT = Path(os.getenv('STATIC_ROOT') or str(BASE_DIR / 'staticfiles'))
 MEDIA_URL = '/media/'
 MEDIA_ROOT = Path(os.getenv('MEDIA_ROOT') or str(BASE_DIR / 'media'))
+MEDIA_ROOT = MEDIA_ROOT.resolve() if not MEDIA_ROOT.is_absolute() else MEDIA_ROOT
+STATIC_ROOT = STATIC_ROOT.resolve() if not STATIC_ROOT.is_absolute() else STATIC_ROOT
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
