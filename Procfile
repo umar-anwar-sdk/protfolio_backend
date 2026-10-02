@@ -1,0 +1,1 @@
+web: gunicone portfolio.config.wsgi
