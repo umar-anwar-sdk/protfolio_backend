@@ -20,6 +20,7 @@ certifi==2026.7.22
 cffi==2.1.1
 charset-normalizer==3.5.1
 click==8.5.0
+cloudinary==1.46.2
 cryptography==50.0.1
 dj-database-url==3.1.2
 Django==6.1.1
@@ -47,6 +48,7 @@ google-auth-httplib2==0.4.2
 google-auth-oauthlib==1.4.1
 googleapis-common-protos==1.75.3
 greenlet==3.5.6
+gunicorn==26.2.0
 h11==0.16.0
 httplib2==0.32.0
 idna==3.20
