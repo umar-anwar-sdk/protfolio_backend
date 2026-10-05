@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import sys
+
 import dj_database_url
 
 try:
@@ -178,11 +180,14 @@ CLOUDINARY_STORAGE = {
     'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
 }
 
+RUNNING_TESTS = 'test' in sys.argv
+USE_CLOUDINARY = not RUNNING_TESTS and all(CLOUDINARY_STORAGE.get(key) for key in ('CLOUD_NAME', 'API_KEY', 'API_SECRET'))
+
 STORAGES = {
     "default": {
-        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage" if USE_CLOUDINARY else "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }

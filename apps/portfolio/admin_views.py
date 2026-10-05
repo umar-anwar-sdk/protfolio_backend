@@ -8,8 +8,8 @@ from apps.contact.models import ContactInfo, ContactMessage
 from apps.contact.serializers import AdminContactMessageSerializer, ContactInfoSerializer
 from apps.portfolio.models import AboutHighlight, CVDownloadLog, Education, Experience, Profile, Skill, SocialLink, Testimonial
 from apps.portfolio.serializers import AboutHighlightSerializer, EducationSerializer, ExperienceSerializer, ProfileSerializer, SkillSerializer, SocialLinkSerializer, TestimonialSerializer
-from apps.projects.models import Project, ProjectImage, ProjectSection, Technology
-from apps.projects.serializers import ProjectImageSerializer, ProjectSectionSerializer, ProjectSerializer, TechnologySerializer
+from apps.projects.models import Project, ProjectHighlight, ProjectImage, ProjectSection, Technology
+from apps.projects.serializers import ProjectHighlightSerializer, ProjectImageSerializer, ProjectSectionSerializer, ProjectSerializer, TechnologySerializer
 from apps.visitors.models import VisitorTracker
 
 
@@ -147,6 +147,18 @@ class AdminTechnologyAPIView(generics.ListCreateAPIView):
 class AdminTechnologyDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Technology.objects.all().order_by('sort_order', 'name')
     serializer_class = TechnologySerializer
+    permission_classes = [IsAdminAuthenticated]
+
+
+class AdminProjectHighlightAPIView(generics.ListCreateAPIView):
+    queryset = ProjectHighlight.objects.all().order_by('project', 'order', 'id')
+    serializer_class = ProjectHighlightSerializer
+    permission_classes = [IsAdminAuthenticated]
+
+
+class AdminProjectHighlightDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = ProjectHighlight.objects.all().order_by('project', 'order', 'id')
+    serializer_class = ProjectHighlightSerializer
     permission_classes = [IsAdminAuthenticated]
 
 

@@ -2,7 +2,7 @@ import os
 
 from rest_framework import serializers
 
-from .models import Project, ProjectImage, ProjectSection, Technology
+from .models import Project, ProjectHighlight, ProjectImage, ProjectSection, Technology
 
 
 class TechnologySerializer(serializers.ModelSerializer):
@@ -32,12 +32,20 @@ class ProjectImageSerializer(serializers.ModelSerializer):
         return image
 
 
+class ProjectHighlightSerializer(serializers.ModelSerializer):
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), write_only=True, required=False)
+
+    class Meta:
+        model = ProjectHighlight
+        fields = ['id', 'project', 'icon', 'value', 'title', 'description', 'order']
+
+
 class ProjectSectionSerializer(serializers.ModelSerializer):
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), write_only=True, required=False)
 
     class Meta:
         model = ProjectSection
-        fields = ['id', 'project', 'heading', 'content', 'image', 'order']
+        fields = ['id', 'project', 'heading', 'subtitle', 'content', 'image', 'layout_type', 'order']
 
     def validate_image(self, image):
         if image and image.size > 5 * 1024 * 1024:
@@ -47,6 +55,7 @@ class ProjectSectionSerializer(serializers.ModelSerializer):
 
 class ProjectSerializer(serializers.ModelSerializer):
     technologies = TechnologySerializer(many=True, read_only=True)
+    highlights = ProjectHighlightSerializer(many=True, read_only=True)
     images = ProjectImageSerializer(many=True, read_only=True)
     sections = ProjectSectionSerializer(many=True, read_only=True)
     # Accept technology IDs when creating/updating a project
@@ -72,6 +81,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             'updated_at',
             'technologies',
             'technology_ids',
+            'highlights',
             'images',
             'sections',
         ]

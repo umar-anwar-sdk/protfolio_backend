@@ -71,11 +71,37 @@ class ProjectImage(models.Model):
         return f'{self.project.title} gallery image'
 
 
+class ProjectHighlight(models.Model):
+    project = models.ForeignKey(Project, related_name='highlights', on_delete=models.CASCADE)
+    icon = models.CharField(max_length=80, blank=True, default='')
+    value = models.CharField(max_length=120, blank=True, default='')
+    title = models.CharField(max_length=120)
+    description = models.TextField(blank=True, default='')
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'id']
+        indexes = [models.Index(fields=['project', 'order'])]
+
+    def __str__(self):
+        return f'{self.project.title} - {self.title}'
+
+
 class ProjectSection(models.Model):
+    class LayoutType(models.TextChoices):
+        FULL_WIDTH_IMAGE = 'full_width_image', 'Full Width Image'
+        IMAGE_TEXT_LEFT = 'image_text_left', 'Image + Text Left'
+        IMAGE_TEXT_RIGHT = 'image_text_right', 'Image + Text Right'
+        TEXT_IMAGE = 'text_image', 'Text + Image'
+        TWO_COLUMN = 'two_column', 'Two Column'
+        LARGE_BANNER = 'large_banner', 'Large Banner'
+
     project = models.ForeignKey(Project, related_name='sections', on_delete=models.CASCADE)
     heading = models.CharField(max_length=150)
-    content = models.TextField()
+    subtitle = models.CharField(max_length=120, blank=True, default='')
+    content = models.TextField(blank=True, default='')
     image = models.ImageField(upload_to='projects/sections/', blank=True, null=True)
+    layout_type = models.CharField(max_length=30, choices=LayoutType.choices, default=LayoutType.IMAGE_TEXT_RIGHT)
     order = models.PositiveIntegerField(default=0)
 
     class Meta:

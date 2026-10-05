@@ -6,7 +6,7 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import Project, ProjectImage, ProjectSection, Technology
+from .models import Project, ProjectHighlight, ProjectImage, ProjectSection, Technology
 
 
 class ProjectAPITests(APITestCase):
@@ -156,3 +156,27 @@ class ProjectAPITests(APITestCase):
         self.assertTrue(self.project.thumbnail_image.name.endswith('new-thumbnail.png'))
         self.assertEqual(self.project.images.count(), 2)
         self.assertEqual(self.project.sections.count(), 2)
+
+    def test_project_detail_exposes_section_layout_and_highlights(self):
+        ProjectHighlight.objects.create(
+            project=self.project,
+            value='80h',
+            title='Standby Time',
+            description='Long battery life.',
+            order=1,
+        )
+        ProjectSection.objects.create(
+            project=self.project,
+            heading='Immersive Sound',
+            subtitle='Audio',
+            content='Experience clarity and depth.',
+            layout_type='image_text_right',
+            order=2,
+        )
+
+        response = self.client.get('/api/projects/portfolio-redesign/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['highlights'][0]['title'], 'Standby Time')
+        self.assertEqual(response.data['sections'][1]['layout_type'], 'image_text_right')
+        self.assertEqual(response.data['sections'][1]['subtitle'], 'Audio')

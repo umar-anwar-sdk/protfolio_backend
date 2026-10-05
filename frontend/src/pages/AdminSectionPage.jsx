@@ -75,6 +75,7 @@ const emptyForms = {
     short_description: "",
     description: "",
     overview: "",
+    technologies: [],
     featured: false,
     is_published: true,
     thumbnail_image: "",
@@ -741,6 +742,23 @@ export function AdminSectionPage() {
 
   const isReadOnlySection = useMemo(() => ["messages", "visitors", "cv", "settings"].includes(section), [section]);
 
+  function normalizeTechnologyList(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((entry) => {
+        if (!entry) return null;
+        if (typeof entry === "number" || typeof entry === "string") return { id: Number(entry) };
+        if (typeof entry === "object" && entry !== null && "id" in entry) return { ...entry, id: Number(entry.id) };
+        return null;
+      })
+      .filter(Boolean)
+      .filter((entry) => Number.isFinite(Number(entry.id)) && Number(entry.id) > 0);
+  }
+
+  function getTechnologyIds(value) {
+    return normalizeTechnologyList(value).map((entry) => Number(entry.id));
+  }
+
   function updateField(name, value) {
     setForm((prev) => ({ ...prev, [name]: value }));
     setFieldErrors((prev) => ({ ...prev, [name]: "" }));
@@ -872,7 +890,7 @@ export function AdminSectionPage() {
       return result;
     }, {});
 
-    payload.technology_ids = (projectForm.technologies || []).map((technology) => technology.id);
+    payload.technology_ids = getTechnologyIds(projectForm.technologies || []);
     if (projectForm.thumbnail_image instanceof File) {
       payload.thumbnail_image = projectForm.thumbnail_image;
     }
@@ -937,7 +955,13 @@ export function AdminSectionPage() {
       setForm(emptyForms[section] || {});
       setFieldErrors({});
     } catch (err) {
-      const apiErrors = err?.fields || {};
+      console.error("[Admin project save failed]", {
+        section,
+        selectedItem: selectedItem ? { id: selectedItem.id, slug: selectedItem.slug } : null,
+        payload: requestPayload,
+        error: err,
+        fields: err?.fields || {},
+      });
       const normalized = {};
       Object.entries(apiErrors).forEach(([fieldName, fieldValue]) => {
         normalized[fieldName] = normalizeFieldError(fieldValue);
@@ -987,8 +1011,13 @@ export function AdminSectionPage() {
         });
       }
       const detailItem = await fetchAdminResource(detailPath);
+      const hydratedTechnologies = normalizeTechnologyList(detailItem?.technologies || []);
       setSelectedItem(detailItem);
-      setForm((prev) => ({ ...prev, ...detailItem }));
+      setForm((prev) => ({
+        ...prev,
+        ...detailItem,
+        technologies: hydratedTechnologies,
+      }));
     } catch (err) {
       setError(err.message || "Unable to load this item for editing.");
     }
@@ -1015,13 +1044,13 @@ export function AdminSectionPage() {
     }, []);
 
     function toggle(id) {
-      const current = (form.technologies || []).slice();
-      const found = current.find((t) => t.id === id);
+      const current = normalizeTechnologyList(form.technologies || []);
+      const found = current.find((t) => Number(t.id) === Number(id));
       if (found) {
-        updateField('technologies', current.filter((t) => t.id !== id));
+        updateField('technologies', current.filter((t) => Number(t.id) !== Number(id)));
       } else {
-        const tech = techs.find((t) => t.id === id);
-        if (tech) updateField('technologies', [...current, tech]);
+        const tech = techs.find((t) => Number(t.id) === Number(id));
+        if (tech) updateField('technologies', [...current, { ...tech, id: Number(tech.id) }]);
       }
     }
 
@@ -1084,9 +1113,9 @@ export function AdminSectionPage() {
           fd.append('image', f);
           fd.append('title', '');
           fd.append('description', '');
+          fd.append('order', String((projectItem.images?.length || 0) + 1));
           await createAdminResource('/api/admin/project-images/', fd);
         }
-        // refresh project
         const refreshed = await fetchAdminResource(`/api/admin/projects/${projectItem.slug}/`);
         setSelectedItem(refreshed);
         setForm((prev) => ({ ...prev, ...refreshed }));
@@ -1135,31 +1164,141 @@ export function AdminSectionPage() {
     );
   }
 
-  function ProjectSectionsEditor({ projectItem }) {
-    const [formSec, setFormSec] = useState({ heading: '', content: '', image: null, order: 0 });
+  function ProjectHighlightsEditor({ projectItem }) {
+    const [formHighlight, setFormHighlight] = useState({ icon: '', value: '', title: '', description: '', order: 0 });
+    const [editId, setEditId] = useState(null);
     const [loading, setLoading] = useState(false);
 
-    useEffect(() => { if (projectItem) setFormSec({ heading: '', content: '', image: null, order: (projectItem.sections?.length || 0) }); }, [projectItem]);
+    useEffect(() => {
+      if (projectItem) {
+        setFormHighlight((prev) => ({ ...prev, order: projectItem.highlights?.length || 0 }));
+      }
+    }, [projectItem]);
+
+    function updateField(k, v) { setFormHighlight((p) => ({ ...p, [k]: v })); }
+
+    function resetForm() {
+      setEditId(null);
+      setFormHighlight({ icon: '', value: '', title: '', description: '', order: projectItem?.highlights?.length || 0 });
+    }
+
+    async function saveHighlight() {
+      if (!projectItem || !projectItem.id) { alert('Save project before adding highlights.'); return; }
+      if (!formHighlight.title.trim()) { alert('Highlight title is required.'); return; }
+      setLoading(true);
+      try {
+        const payload = {
+          project: projectItem.id,
+          icon: formHighlight.icon,
+          value: formHighlight.value,
+          title: formHighlight.title,
+          description: formHighlight.description,
+          order: Number(formHighlight.order || 0),
+        };
+
+        if (editId) {
+          await updateAdminResource(`/api/admin/project-highlights/${editId}/`, payload);
+        } else {
+          await createAdminResource('/api/admin/project-highlights/', payload);
+        }
+
+        const refreshed = await fetchAdminResource(`/api/admin/projects/${projectItem.slug}/`);
+        setSelectedItem(refreshed);
+        setForm((prev) => ({ ...prev, ...refreshed }));
+        resetForm();
+      } catch (err) {
+        alert(err.message || 'Unable to save highlight');
+      } finally { setLoading(false); }
+    }
+
+    async function deleteHighlight(id) {
+      if (!window.confirm('Delete highlight?')) return;
+      try {
+        await deleteAdminResource(`/api/admin/project-highlights/${id}/`);
+        const refreshed = await fetchAdminResource(`/api/admin/projects/${projectItem.slug}/`);
+        setSelectedItem(refreshed);
+        setForm((prev) => ({ ...prev, ...refreshed }));
+      } catch (err) {}
+    }
+
+    return (
+      <div className="space-y-4">
+        {(projectItem?.highlights || []).length > 0 && (
+          <div className="space-y-3">
+            {projectItem.highlights.map((h) => (
+              <div key={h.id} className="rounded-xl border border-border bg-background p-3 flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">{h.value || 'Value'} · {h.title}</div>
+                  <div className="text-xs text-muted-foreground">{h.description || 'No description'}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setEditId(h.id); setFormHighlight({ icon: h.icon || '', value: h.value || '', title: h.title || '', description: h.description || '', order: Number(h.order || 0) }); }} className="rounded-xl border border-border px-2 py-1 text-xs">Edit</button>
+                  <button type="button" onClick={() => deleteHighlight(h.id)} className="rounded-xl bg-red-500/10 px-2 py-1 text-xs text-red-300">Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <input placeholder="Icon name" value={formHighlight.icon} onChange={(e) => updateField('icon', e.target.value)} className="rounded-xl border border-border px-3 py-2" />
+          <input placeholder="Value / Number" value={formHighlight.value} onChange={(e) => updateField('value', e.target.value)} className="rounded-xl border border-border px-3 py-2" />
+          <input className="md:col-span-2 rounded-xl border border-border px-3 py-2" placeholder="Title" value={formHighlight.title} onChange={(e) => updateField('title', e.target.value)} />
+          <textarea className="md:col-span-2 rounded-xl border border-border px-3 py-2" placeholder="Description" value={formHighlight.description} onChange={(e) => updateField('description', e.target.value)} rows={3} />
+          <div className="md:col-span-2 flex items-center gap-3">
+            <input type="number" min={0} value={formHighlight.order} onChange={(e) => updateField('order', Number(e.target.value))} className="rounded-xl border border-border px-3 py-2 w-24" />
+            <button type="button" onClick={saveHighlight} disabled={loading} className="rounded-xl bg-primary px-3 py-2 text-primary-foreground">{editId ? 'Update highlight' : 'Add highlight'}</button>
+            {editId && <button type="button" onClick={resetForm} className="rounded-xl border border-border px-3 py-2">Cancel</button>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function ProjectSectionsEditor({ projectItem }) {
+    const [formSec, setFormSec] = useState({ heading: '', subtitle: '', content: '', layout_type: 'image_text_right', image: null, order: 0 });
+    const [editId, setEditId] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+      if (projectItem) {
+        setFormSec({ heading: '', subtitle: '', content: '', layout_type: 'image_text_right', image: null, order: (projectItem.sections?.length || 0) });
+      }
+    }, [projectItem]);
 
     function updateSecField(k, v) { setFormSec((p) => ({ ...p, [k]: v })); }
 
-    async function addSection() {
+    function resetForm() {
+      setEditId(null);
+      setFormSec({ heading: '', subtitle: '', content: '', layout_type: 'image_text_right', image: null, order: (projectItem?.sections?.length || 0) });
+    }
+
+    async function saveSection() {
       if (!projectItem || !projectItem.id) { alert('Save project before adding sections.'); return; }
+      if (!formSec.heading.trim()) { alert('Section heading is required.'); return; }
       setLoading(true);
       try {
         const fd = new FormData();
         fd.append('project', String(projectItem.id));
         fd.append('heading', formSec.heading);
-        fd.append('content', formSec.content);
+        fd.append('subtitle', formSec.subtitle || '');
+        fd.append('content', formSec.content || '');
+        fd.append('layout_type', formSec.layout_type || 'image_text_right');
         fd.append('order', String(formSec.order || 0));
         if (formSec.image instanceof File) fd.append('image', formSec.image);
-        await createAdminResource('/api/admin/project-sections/', fd);
+
+        if (editId) {
+          await updateAdminResource(`/api/admin/project-sections/${editId}/`, fd);
+        } else {
+          await createAdminResource('/api/admin/project-sections/', fd);
+        }
+
         const refreshed = await fetchAdminResource(`/api/admin/projects/${projectItem.slug}/`);
         setSelectedItem(refreshed);
         setForm((prev) => ({ ...prev, ...refreshed }));
-        setFormSec({ heading: '', content: '', image: null, order: (refreshed.sections?.length || 0) });
+        resetForm();
       } catch (err) {
-        alert(err.message || 'Unable to add section');
+        alert(err.message || 'Unable to save section');
       } finally { setLoading(false); }
     }
 
@@ -1174,17 +1313,41 @@ export function AdminSectionPage() {
     }
 
     return (
-      <div>
+      <>
+        <style>{`
+          .project-layout-select {
+            color-scheme: dark;
+            background-color: #0b0b0d;
+            color: #ffffff;
+          }
+          .project-layout-select option {
+            background-color: #0b0b0d;
+            color: #ffffff;
+          }
+          .project-layout-select option:checked,
+          .project-layout-select option:hover,
+          .project-layout-select option:focus {
+            background: linear-gradient(0deg, rgba(37, 99, 235, 0.82), rgba(37, 99, 235, 0.82));
+            color: #ffffff;
+          }
+        `}</style>
+
+        <div>
         {(projectItem?.sections || []).length > 0 && (
           <div className="space-y-3 mb-3">
             {projectItem.sections.map((s) => (
-              <div key={s.id} className="rounded-xl border border-border bg-background p-3 flex justify-between items-start">
-                <div>
-                  <div className="font-medium">{s.heading}</div>
-                  <div className="text-xs text-muted-foreground">{s.content}</div>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <button type="button" onClick={() => deleteSection(s.id)} className="rounded-xl bg-red-500/10 px-3 py-1 text-red-300">Delete</button>
+              <div key={s.id} className="rounded-xl border border-border bg-background p-3">
+                <div className="flex justify-between items-start gap-3">
+                  <div className="space-y-1">
+                    <div className="font-medium">{s.heading}</div>
+                    {s.subtitle && <div className="text-[10px] uppercase tracking-[0.2em] text-primary">{s.subtitle}</div>}
+                    <div className="text-xs text-muted-foreground">{s.content || 'No content'}</div>
+                    <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">{s.layout_type || 'image_text_right'} / order {s.order ?? 0}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => { setEditId(s.id); setFormSec({ heading: s.heading || '', subtitle: s.subtitle || '', content: s.content || '', layout_type: s.layout_type || 'image_text_right', image: null, order: Number(s.order || 0) }); }} className="rounded-xl border border-border px-2 py-1 text-xs">Edit</button>
+                    <button type="button" onClick={() => deleteSection(s.id)} className="rounded-xl bg-red-500/10 px-2 py-1 text-xs text-red-300">Delete</button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1192,15 +1355,33 @@ export function AdminSectionPage() {
         )}
 
         <div className="grid gap-3">
+          <input placeholder="Section label / subtitle" value={formSec.subtitle} onChange={(e) => updateSecField('subtitle', e.target.value)} className="rounded-xl border border-border px-3 py-2" />
           <input placeholder="Heading" value={formSec.heading} onChange={(e) => updateSecField('heading', e.target.value)} className="rounded-xl border border-border px-3 py-2" />
-          <textarea placeholder="Content" value={formSec.content} onChange={(e) => updateSecField('content', e.target.value)} className="rounded-xl border border-border px-3 py-2" />
+          <textarea placeholder="Description / content" value={formSec.content} onChange={(e) => updateSecField('content', e.target.value)} className="rounded-xl border border-border px-3 py-2" rows={4} />
+          <div className="grid gap-3 md:grid-cols-2">
+            <select
+              value={formSec.layout_type}
+              onChange={(e) => updateSecField('layout_type', e.target.value)}
+              className="project-layout-select rounded-xl border border-border px-3 py-2 w-full outline-none focus:border-primary"
+              style={{ backgroundColor: '#0b0b0d', color: '#ffffff' }}
+            >
+              <option value="full_width_image">Full Width Image</option>
+              <option value="image_text_left">Image + Text Left</option>
+              <option value="image_text_right">Image + Text Right</option>
+              <option value="text_image">Text + Image</option>
+              <option value="two_column">Two Column</option>
+              <option value="large_banner">Large Banner</option>
+            </select>
+            <input type="number" min={0} value={formSec.order} onChange={(e) => updateSecField('order', Number(e.target.value))} className="rounded-xl border border-border px-3 py-2 w-full" />
+          </div>
           <input type="file" accept="image/*" onChange={(e) => updateSecField('image', e.target.files?.[0] || null)} />
           <div className="flex items-center gap-2">
-            <input type="number" min={0} value={formSec.order} onChange={(e) => updateSecField('order', Number(e.target.value))} className="rounded-xl border border-border px-3 py-2 w-24" />
-            <button type="button" onClick={addSection} disabled={loading} className="rounded-xl bg-primary px-3 py-2 text-primary-foreground">Add section</button>
+            <button type="button" onClick={saveSection} disabled={loading} className="rounded-xl bg-primary px-3 py-2 text-primary-foreground">{editId ? 'Update section' : 'Add section'}</button>
+            {editId && <button type="button" onClick={resetForm} className="rounded-xl border border-border px-3 py-2">Cancel</button>}
           </div>
         </div>
       </div>
+      </>
     );
   }
 
@@ -1313,9 +1494,9 @@ export function AdminSectionPage() {
                   </div>
                 </div>
 
-                {/* Basic Information */}
+                {/* Main Project Information */}
                 <div className="rounded-xl border border-border bg-surface p-4">
-                  <h3 className="text-sm font-medium text-secondary-foreground mb-3">Basic Information</h3>
+                  <h3 className="text-sm font-medium text-secondary-foreground mb-3">Main Project Information</h3>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="block text-sm text-muted-foreground md:col-span-2">
                       <span className="mb-2 block text-xs uppercase tracking-[0.2em] text-muted-foreground">Title</span>
@@ -1361,15 +1542,21 @@ export function AdminSectionPage() {
                   <ProjectFeatures featuresText={form.features || ''} onChange={(val) => updateField('features', val)} />
                 </div>
 
+                {/* Project Highlights */}
+                <div className="rounded-xl border border-border bg-surface p-4">
+                  <h3 className="text-sm font-medium text-secondary-foreground mb-3">Project Highlights</h3>
+                  <ProjectHighlightsEditor projectItem={selectedItem} />
+                </div>
+
                 {/* Project Gallery */}
                 <div className="rounded-xl border border-border bg-surface p-4">
                   <h3 className="text-sm font-medium text-secondary-foreground mb-3">Project Gallery</h3>
                   <ProjectGallery projectItem={selectedItem} />
                 </div>
 
-                {/* Project Story / Client Story */}
+                {/* Project Details / Case Study */}
                 <div className="rounded-xl border border-border bg-surface p-4">
-                  <h3 className="text-sm font-medium text-secondary-foreground mb-3">Project Story / Client Story</h3>
+                  <h3 className="text-sm font-medium text-secondary-foreground mb-3">Project Details / Case Study Sections</h3>
                   <ProjectSectionsEditor projectItem={selectedItem} />
                 </div>
 

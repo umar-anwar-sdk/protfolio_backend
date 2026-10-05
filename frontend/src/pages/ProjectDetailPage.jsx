@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowUpRight, Github, ExternalLink } from "lucide-react";
 import { Button } from "@/components/Button";
-import SectionsCarousel from "@/components/SectionsCarousel";
 import { fetchProjectBySlug } from "@/services/projectService";
 
 function splitText(text = "") {
@@ -10,6 +9,91 @@ function splitText(text = "") {
     .split(/\n+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function sortByOrder(items = []) {
+  return [...items].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0));
+}
+
+function renderCaseStudyLayout(section) {
+  const content = (
+    <div className="space-y-4">
+      {section.subtitle && (
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">
+          {section.subtitle}
+        </p>
+      )}
+      {section.heading && (
+        <h3 className="text-3xl font-bold text-secondary-foreground">{section.heading}</h3>
+      )}
+      {section.content && (
+        <p className="text-muted-foreground leading-relaxed whitespace-pre-line">{section.content}</p>
+      )}
+    </div>
+  );
+
+  const image = section.image ? (
+    <div className="overflow-hidden rounded-[1.75rem] border border-border bg-surface">
+      <img src={section.image} alt={section.heading || "Project section"} className="h-full w-full object-cover" />
+    </div>
+  ) : null;
+
+  switch (section.layout_type) {
+    case "full_width_image":
+      return (
+        <div key={section.id} className="space-y-5 rounded-3xl border border-border bg-surface p-4 md:p-6">
+          {image}
+          {content}
+        </div>
+      );
+    case "image_text_left":
+      return (
+        <div key={section.id} className="grid gap-8 rounded-3xl border border-border bg-surface p-4 md:grid-cols-2 md:p-6">
+          {image}
+          <div className="flex items-center">{content}</div>
+        </div>
+      );
+    case "text_image":
+      return (
+        <div key={section.id} className="grid gap-8 rounded-3xl border border-border bg-surface p-4 md:grid-cols-2 md:p-6">
+          <div className="flex items-center">{content}</div>
+          {image}
+        </div>
+      );
+    case "two_column":
+      return (
+        <div key={section.id} className="grid gap-8 rounded-3xl border border-border bg-surface p-4 md:grid-cols-2 md:p-6">
+          <div className="space-y-4">{content}</div>
+          {image || (
+            <div className="flex min-h-[220px] items-center justify-center rounded-[1.5rem] border border-dashed border-border bg-background/60 text-sm text-muted-foreground">
+              Visual asset
+            </div>
+          )}
+        </div>
+      );
+    case "large_banner":
+      return (
+        <div key={section.id} className="relative overflow-hidden rounded-3xl border border-border bg-surface">
+          {image && <div className="relative h-[340px] w-full"> <img src={section.image} alt={section.heading || "Project section"} className="h-full w-full object-cover" /> </div>}
+          <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 p-6 md:p-8">
+            <div className="max-w-2xl space-y-3">
+              {section.subtitle && <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">{section.subtitle}</p>}
+              {section.heading && <h3 className="text-2xl font-bold text-white md:text-4xl">{section.heading}</h3>}
+              {section.content && <p className="text-sm leading-relaxed text-white/85 md:text-base">{section.content}</p>}
+            </div>
+          </div>
+        </div>
+      );
+    case "image_text_right":
+    default:
+      return (
+        <div key={section.id} className="grid gap-8 rounded-3xl border border-border bg-surface p-4 md:grid-cols-2 md:p-6">
+          <div className="flex items-center">{content}</div>
+          {image}
+        </div>
+      );
+  }
 }
 
 export const ProjectDetailPage = () => {
@@ -45,6 +129,9 @@ export const ProjectDetailPage = () => {
     if (!project) return "/hero-bg.jpg";
     return project.thumbnail_image || project.images?.[0]?.image || "/hero-bg.jpg";
   }, [project]);
+
+  const orderedHighlights = useMemo(() => sortByOrder(project?.highlights || []), [project]);
+  const orderedSections = useMemo(() => sortByOrder(project?.sections || []), [project]);
 
   if (loading) {
     return (
@@ -239,6 +326,45 @@ export const ProjectDetailPage = () => {
           </aside>
         </section>
 
+        {orderedHighlights.length > 0 && (
+          <section className="mt-16 space-y-6">
+            <div className="max-w-2xl">
+              <p className="text-secondary-foreground text-sm font-medium tracking-wider uppercase">
+                Quick highlights
+              </p>
+              <h2 className="text-3xl md:text-4xl font-bold mt-3 text-secondary-foreground">
+                Key project specifications
+              </h2>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              {orderedHighlights.map((highlight) => (
+                <div key={highlight.id} className="glass rounded-2xl p-5">
+                  {highlight.value && <div className="text-xl font-bold text-secondary-foreground">{highlight.value}</div>}
+                  {highlight.title && <h3 className="mt-2 text-lg font-semibold text-secondary-foreground">{highlight.title}</h3>}
+                  {highlight.description && <p className="mt-2 text-sm text-muted-foreground">{highlight.description}</p>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {orderedSections.length > 0 && (
+          <section className="mt-16 space-y-8">
+            <div className="max-w-2xl">
+              <p className="text-secondary-foreground text-sm font-medium tracking-wider uppercase">
+                Case study
+              </p>
+              <h2 className="text-3xl md:text-4xl font-bold mt-3 text-secondary-foreground">
+                Detailed project story
+              </h2>
+            </div>
+
+            <div className="space-y-8">
+              {orderedSections.map((section) => renderCaseStudyLayout(section))}
+            </div>
+          </section>
+        )}
+
         {project.images && project.images.length > 0 ? (
           <section className="mt-16 space-y-8">
             <div className="max-w-2xl">
@@ -251,7 +377,7 @@ export const ProjectDetailPage = () => {
             </div>
 
             <div className="grid gap-8 md:grid-cols-2">
-              {project.images.map((image) => (
+              {sortByOrder(project.images).map((image) => (
                 <div key={image.id} className="glass rounded-2xl overflow-hidden">
                   <div className="aspect-[16/10] overflow-hidden">
                     <img
@@ -275,21 +401,6 @@ export const ProjectDetailPage = () => {
                 No project screenshots have been added yet for this project.
               </p>
             </div>
-          </section>
-        )}
-
-        {project.sections && project.sections.length > 0 && (
-          <section className="mt-16 space-y-8">
-            <div className="max-w-2xl">
-              <p className="text-secondary-foreground text-sm font-medium tracking-wider uppercase">
-                More details
-              </p>
-              <h2 className="text-3xl md:text-4xl font-bold mt-3 text-secondary-foreground">
-                Additional project insights
-              </h2>
-            </div>
-
-            <SectionsCarousel sections={project.sections} />
           </section>
         )}
 
