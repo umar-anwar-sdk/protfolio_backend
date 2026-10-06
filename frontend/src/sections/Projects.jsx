@@ -88,8 +88,8 @@ function Carousel({ items = [], onCardClick } = {}) {
               </div>
               <p className="text-muted-foreground text-sm">{item.short_description || item.description}</p>
               <div className="flex flex-wrap gap-2">
-                {(item.technologies || []).slice(0, 4).map((tag, tagIdx) => (
-                  <span key={tag.id || tag.name || tagIdx} className="px-4 py-1.5 rounded-full bg-surface text-xs font-medium border border-border/50 text-muted-foreground hover:border-primary/50 hover:text-primary transition-all duration-300">
+                {(item.technologies || []).map((tag, tagIdx) => (
+                  <span key={tag.id || tag.slug || tag.name || tagIdx} className="px-4 py-1.5 rounded-full bg-surface text-xs font-medium border border-border/50 text-muted-foreground hover:border-primary/50 hover:text-primary transition-all duration-300">
                     {tag.name}
                   </span>
                 ))}

@@ -93,8 +93,8 @@ export function ProjectsPage() {
                   </div>
                   <p className="text-muted-foreground text-sm">{project.short_description || project.description}</p>
                   <div className="flex flex-wrap gap-2">
-                    {(project.technologies || []).slice(0, 4).map((tag) => (
-                      <span key={tag.id || tag.name} className="px-4 py-1.5 rounded-full bg-surface text-xs font-medium border border-border/50 text-muted-foreground hover:border-primary/50 hover:text-primary transition-all duration-300">
+                    {(project.technologies || []).map((tag) => (
+                      <span key={tag.id || tag.slug || tag.name} className="px-4 py-1.5 rounded-full bg-surface text-xs font-medium border border-border/50 text-muted-foreground hover:border-primary/50 hover:text-primary transition-all duration-300">
                         {tag.name}
                       </span>
                     ))}
