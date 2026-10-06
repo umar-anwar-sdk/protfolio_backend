@@ -955,24 +955,24 @@ export function AdminSectionPage() {
       setForm(emptyForms[section] || {});
       setFieldErrors({});
     } catch (err) {
-      console.error("[Admin project save failed]", {
-        section,
-        selectedItem: selectedItem ? { id: selectedItem.id, slug: selectedItem.slug } : null,
-        payload: requestPayload,
-        error: err,
-        fields: err?.fields || {},
-      });
-      const normalized = {};
-      Object.entries(apiErrors).forEach(([fieldName, fieldValue]) => {
-        normalized[fieldName] = normalizeFieldError(fieldValue);
-      });
-      setFieldErrors((prev) => ({ ...prev, ...normalized }));
-      setError(err.message || "Unable to save changes.");
-    } finally {
-      setSaving(false);
+        console.error("[Admin project save failed]", {
+          section,
+          selectedItem: selectedItem ? { id: selectedItem.id, slug: selectedItem.slug } : null,
+          payload: requestPayload,
+          error: err,
+          fields: err?.fields || {},
+        });
+        const apiErrors = err?.fields || {};
+        const normalized = {};
+        Object.entries(apiErrors).forEach(([fieldName, fieldValue]) => {
+          normalized[fieldName] = normalizeFieldError(fieldValue);
+        });
+        setFieldErrors((prev) => ({ ...prev, ...normalized }));
+        setError(err.message || "Unable to save changes.");
+      } finally {
+        setSaving(false);
+      }
     }
-  }
-
   function getDetailPath(item) {
     if (section === "projects") {
       if (!item?.slug) {
@@ -1026,6 +1026,7 @@ export function AdminSectionPage() {
   // Small helper components for Projects section
   function TechsPicker({ updateField, selectedTechs = [] }) {
     const [techs, setTechs] = useState([]);
+    const selectedIds = new Set((selectedTechs || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0));
 
     useEffect(() => {
       let active = true;
@@ -1057,7 +1058,7 @@ export function AdminSectionPage() {
     return (
       <div className="flex flex-wrap gap-2">
         {techs.map((t) => {
-          const active = (form.technologies || []).some((s) => s.id === t.id);
+          const active = selectedIds.has(Number(t.id)) || (form.technologies || []).some((s) => Number(s.id) === Number(t.id));
           return (
             <button key={t.id} type="button" onClick={() => toggle(t.id)} className={`px-3 py-1.5 rounded-full border ${active ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-border text-muted-foreground'}`}>
               {t.name}
