@@ -16,6 +16,13 @@ if load_dotenv is not None:
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-me-please-set-a-strong-secret-key-12345')
 DEBUG = os.getenv('DEBUG', 'True').lower() in {'1', 'true', 'yes', 'on'}
+DEFAULT_FRONTEND_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'https://protfolio-frontend-delta.vercel.app',
+    'https://protfolio-frontend-kjxx3br3m.vercel.app',
+]
+
 ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,0.0.0.0').split(',') if host.strip()]
 
 INSTALLED_APPS = [
@@ -48,23 +55,25 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-CORS_ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv(
-        "CORS_ALLOWED_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173"
-    ).split(",")
-    if origin.strip()
-]
+def _split_env_list(value, default):
+    origins = list(default)
+    if value:
+        for origin in value.split(','):
+            cleaned = origin.strip()
+            if cleaned and cleaned not in origins:
+                origins.append(cleaned)
+    return origins
 
-CSRF_TRUSTED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv(
-        "CSRF_TRUSTED_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173"
-    ).split(",")
-    if origin.strip()
-]
+
+CORS_ALLOWED_ORIGINS = _split_env_list(
+    os.getenv('CORS_ALLOWED_ORIGINS'),
+    DEFAULT_FRONTEND_ORIGINS,
+)
+
+CSRF_TRUSTED_ORIGINS = _split_env_list(
+    os.getenv('CSRF_TRUSTED_ORIGINS'),
+    DEFAULT_FRONTEND_ORIGINS,
+)
 
 CORS_ALLOW_CREDENTIALS = True
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowUpRight, Github } from "lucide-react";
 import { Link } from "react-router-dom";
-import { getAssetUrl } from "@/api/client";
+import { apiRequest, getAssetUrl } from "@/api/client";
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState([]);
@@ -13,13 +13,7 @@ export function ProjectsPage() {
     async function loadProjects() {
       try {
         setLoading(true);
-        const response = await fetch("http://localhost:8000/api/projects/");
-
-        if (!response.ok) {
-          throw new Error("Projects could not be loaded.");
-        }
-
-        const data = await response.json();
+        const data = await apiRequest("/api/projects/");
         setProjects(Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []);
       } catch (err) {
         setError(err.message || "Unable to load projects.");
