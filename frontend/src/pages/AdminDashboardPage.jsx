@@ -9,6 +9,7 @@ const sections = [
   { name: "Profile", icon: ShieldCheck, slug: "profile" },
   { name: "About", icon: FileText, slug: "about" },
   { name: "Skills", icon: Layers3, slug: "skills" },
+  { name: "Technologies", icon: Layers3, slug: "technologies" },
   { name: "Experience", icon: BriefcaseBusiness, slug: "experience" },
   { name: "Education", icon: FileText, slug: "education" },
   { name: "Projects", icon: Layers3, slug: "projects" },

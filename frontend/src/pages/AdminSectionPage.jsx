@@ -8,6 +8,7 @@ const sectionConfig = {
   profile: { label: "Profile", endpoint: "/api/admin/profile/" },
   about: { label: "About", endpoint: "/api/admin/about/" },
   skills: { label: "Skills", endpoint: "/api/admin/skills/" },
+  technologies: { label: "Technologies", endpoint: "/api/admin/technologies/" },
   highlights: { label: "About Highlights", endpoint: "/api/admin/highlights/" },
   experience: { label: "Experience", endpoint: "/api/admin/experience/" },
   education: { label: "Education", endpoint: "/api/admin/education/" },
@@ -48,6 +49,11 @@ const emptyForms = {
     is_active: true,
   },
   skills: {
+    name: "",
+    sort_order: 0,
+    is_active: true,
+  },
+  technologies: {
     name: "",
     sort_order: 0,
     is_active: true,
@@ -112,6 +118,7 @@ const requiredFieldsBySection = {
   about: ["about"],
   highlights: ["about", "title", "description"],
   skills: ["name"],
+  technologies: ["name"],
   experience: ["period", "role", "company", "description"],
   education: ["institution", "degree"],
   projects: ["title", "short_description", "description"],
