@@ -3,6 +3,7 @@ import { ArrowRight, BarChart3, BriefcaseBusiness, FileText, House, Layers3, Lin
 import { Link, useNavigate } from "react-router-dom";
 import { fetchDashboardOverview, fetchAdminMessages, fetchAdminProjects, fetchAdminVisitors } from "@/services/adminService";
 import { getCurrentAdmin, logoutAdmin } from "@/services/authService";
+import { showToast } from "@/utils/toastNotifications";
 
 const sections = [
   { name: "Dashboard", icon: House, slug: "dashboard" },
@@ -57,8 +58,13 @@ export function AdminDashboardPage() {
   }, []);
 
   const handleLogout = async () => {
-    await logoutAdmin();
-    navigate("/admin/login");
+    try {
+      await logoutAdmin();
+      showToast("Signed out successfully.", "success");
+      navigate("/admin/login");
+    } catch (error) {
+      showToast(error.message || "Unable to sign out.", "error");
+    }
   };
 
   const stats = [

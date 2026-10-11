@@ -1,3 +1,5 @@
+import { formatApiError, getApiFieldErrors } from "@/utils/apiErrors";
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export function getApiBaseUrl() {
@@ -25,19 +27,38 @@ export async function apiRequest(path, options = {}) {
     requestOptions.headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, requestOptions);
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, requestOptions);
+  } catch (cause) {
+    console.error("[API network failure]", { path, cause });
+    const error = new Error("Unable to connect to the server. Please check your connection and try again.");
+    error.cause = cause;
+    error.status = 0;
+    throw error;
+  }
 
   if (response.status === 204) {
     return null;
   }
 
   const contentType = response.headers.get("content-type") || "";
-  const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+  let payload;
+  if (contentType.includes("application/json")) {
+    try {
+      payload = await response.json();
+    } catch {
+      payload = await response.text().catch(() => "");
+    }
+  } else {
+    payload = await response.text();
+  }
 
   if (!response.ok) {
-    const message = typeof payload === "string" ? payload : payload?.detail || payload?.error || payload?.message || "Request failed.";
-    const error = new Error(message);
+    const error = new Error(formatApiError(response.status, payload));
     error.status = response.status;
+    error.payload = payload;
+    error.fields = getApiFieldErrors(payload);
     throw error;
   }
 

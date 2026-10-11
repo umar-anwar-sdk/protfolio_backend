@@ -1,3 +1,5 @@
+import { formatApiError, getApiFieldErrors } from "@/utils/apiErrors";
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 function getStoredAccessToken() {
@@ -25,21 +27,41 @@ function clearStoredSession() {
 async function request(path, options = {}) {
   const token = getStoredAccessToken();
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+      ...options,
+    });
+  } catch (cause) {
+    console.error("[Admin authentication network failure]", { path, cause });
+    const error = new Error("Unable to connect to the server. Please try again.");
+    error.status = 0;
+    error.cause = cause;
+    throw error;
+  }
 
   const contentType = response.headers.get("content-type") || "";
-  const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+  const rawPayload = await response.text();
+  let payload = rawPayload;
+  if (contentType.includes("application/json")) {
+    try {
+      payload = JSON.parse(rawPayload);
+    } catch {
+      payload = rawPayload;
+    }
+  }
 
   if (!response.ok) {
-    const message = typeof payload === "string" ? payload : payload?.detail || payload?.error || "Request failed.";
-    throw new Error(message);
+    const error = new Error(formatApiError(response.status, payload, "Unable to sign in. Please check your details."));
+    error.status = response.status;
+    error.payload = payload;
+    error.fields = getApiFieldErrors(payload);
+    throw error;
   }
 
   return payload;

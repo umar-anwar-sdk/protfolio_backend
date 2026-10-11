@@ -17,6 +17,7 @@ import { AdminSectionPage } from "@/pages/AdminSectionPage";
 import { ProtectedAdminRoute } from "@/components/ProtectedAdminRoute";
 import { usePortfolioData } from "@/hooks/usePortfolioData";
 import { trackVisitorOnLoad } from "@/utils/visitorTracker";
+import { ToastProvider } from "@/context/ToastContext";
 
 function normalizeWhatsAppNumber(value) {
   if (!value) return "";
@@ -86,18 +87,20 @@ function App() {
   }, []);
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomePage portfolio={data} loading={loading} error={error} />} />
-        <Route path="/projects" element={<><ProjectsPage /><FloatingWhatsAppButton whatsappNumber={data?.contactInfo?.whatsapp_number} /></>} />
-        <Route path="/projects/:slug" element={<><ProjectDetailPage /><FloatingWhatsAppButton whatsappNumber={data?.contactInfo?.whatsapp_number} /></>} />
-        <Route path="/admin/login" element={<AdminLoginPage />} />
-        <Route element={<ProtectedAdminRoute />}>
-          <Route path="/admin" element={<AdminDashboardPage />} />
-          <Route path="/admin/:section" element={<AdminSectionPage />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<HomePage portfolio={data} loading={loading} error={error} />} />
+          <Route path="/projects" element={<><ProjectsPage /><FloatingWhatsAppButton whatsappNumber={data?.contactInfo?.whatsapp_number} /></>} />
+          <Route path="/projects/:slug" element={<><ProjectDetailPage /><FloatingWhatsAppButton whatsappNumber={data?.contactInfo?.whatsapp_number} /></>} />
+          <Route path="/admin/login" element={<AdminLoginPage />} />
+          <Route element={<ProtectedAdminRoute />}>
+            <Route path="/admin" element={<AdminDashboardPage />} />
+            <Route path="/admin/:section" element={<AdminSectionPage />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </ToastProvider>
   );
 }
 

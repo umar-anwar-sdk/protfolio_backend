@@ -7,7 +7,10 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/Button";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { apiRequest } from "@/api/client";
+import { getApiFieldErrors } from "@/utils/apiErrors";
+import { showToast } from "@/utils/toastNotifications";
 
 const defaultContactInfo = [
   { icon: Mail, label: "Email", value: "hello@example.com", href: "mailto:hello@example.com" },
@@ -26,35 +29,47 @@ export const Contact = ({ contactInfo, profile }) => {
   const [formData, setFormData] = useState({ name: "", email: "", subject: "", message: "" });
   const [isLoading, setIsLoading] = useState(false);
   const [submitStatus, setSubmitStatus] = useState({ type: null, message: "" });
+  const [fieldErrors, setFieldErrors] = useState({});
+  const submissionInProgress = useRef(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submissionInProgress.current) return;
 
+    submissionInProgress.current = true;
     setIsLoading(true);
     setSubmitStatus({ type: null, message: "" });
+    setFieldErrors({});
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/contact/`, {
+      const payload = await apiRequest("/api/contact/", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(formData),
       });
 
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        const message = payload?.detail || payload?.error || payload?.message || "Failed to send message. Please try again later.";
-        throw new Error(message);
+      if (payload?.error) {
+        console.error("[Contact form delivery failure]", payload);
+        const error = new Error("Unable to send your message. Please try again later.");
+        error.status = 502;
+        error.payload = payload;
+        throw error;
       }
 
-      setSubmitStatus({ type: "success", message: payload?.detail || "Message sent successfully! I'll get back to you soon." });
+      setSubmitStatus({ type: "success", message: "Your message has been sent successfully!" });
       setFormData({ name: "", email: "", subject: "", message: "" });
+      showToast("Your message has been sent successfully!", "success");
     } catch (err) {
       console.error("Contact form error:", err);
-      setSubmitStatus({ type: "error", message: err?.message || "Failed to send message. Please try again later." });
+      const serverFieldErrors = getApiFieldErrors(err?.payload);
+      setFieldErrors(serverFieldErrors);
+      const isValidationError = err?.status === 400 || err?.status === 422;
+      const message = isValidationError
+        ? err.message || "Please check the highlighted fields and try again."
+        : "Unable to send your message. Please try again later.";
+      setSubmitStatus({ type: "error", message });
+      showToast(message, isValidationError ? "warning" : "error");
     } finally {
+      submissionInProgress.current = false;
       setIsLoading(false);
     }
   };
@@ -90,9 +105,11 @@ export const Contact = ({ contactInfo, profile }) => {
                   required
                   placeholder="Your name..."
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-surface rounded-xl border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                  aria-invalid={Boolean(fieldErrors.name)}
+                  onChange={(e) => { setFormData({ ...formData, name: e.target.value }); setFieldErrors((current) => ({ ...current, name: "" })); }}
+                  className={`w-full px-4 py-3 bg-surface rounded-xl border ${fieldErrors.name ? "border-red-500" : "border-border"} focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all`}
                 />
+                {fieldErrors.name && <p className="mt-2 text-sm text-red-400">{fieldErrors.name}</p>}
               </div>
 
               <div>
@@ -103,9 +120,11 @@ export const Contact = ({ contactInfo, profile }) => {
                   required
                   placeholder="your@email.com"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-4 py-3 bg-surface rounded-xl border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                  aria-invalid={Boolean(fieldErrors.email)}
+                  onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setFieldErrors((current) => ({ ...current, email: "" })); }}
+                  className={`w-full px-4 py-3 bg-surface rounded-xl border ${fieldErrors.email ? "border-red-500" : "border-border"} focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all`}
                 />
+                {fieldErrors.email && <p className="mt-2 text-sm text-red-400">{fieldErrors.email}</p>}
               </div>
 
               <div>
@@ -116,9 +135,11 @@ export const Contact = ({ contactInfo, profile }) => {
                   required
                   placeholder="Project inquiry"
                   value={formData.subject}
-                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  className="w-full px-4 py-3 bg-surface rounded-xl border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                  aria-invalid={Boolean(fieldErrors.subject)}
+                  onChange={(e) => { setFormData({ ...formData, subject: e.target.value }); setFieldErrors((current) => ({ ...current, subject: "" })); }}
+                  className={`w-full px-4 py-3 bg-surface rounded-xl border ${fieldErrors.subject ? "border-red-500" : "border-border"} focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all`}
                 />
+                {fieldErrors.subject && <p className="mt-2 text-sm text-red-400">{fieldErrors.subject}</p>}
               </div>
 
               <div>
@@ -128,10 +149,12 @@ export const Contact = ({ contactInfo, profile }) => {
                   rows={5}
                   required
                   value={formData.message}
-                  onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                  aria-invalid={Boolean(fieldErrors.message)}
+                  onChange={(e) => { setFormData({ ...formData, message: e.target.value }); setFieldErrors((current) => ({ ...current, message: "" })); }}
                   placeholder="Your message..."
-                  className="w-full px-4 py-3 bg-surface rounded-xl border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all resize-none"
+                  className={`w-full px-4 py-3 bg-surface rounded-xl border ${fieldErrors.message ? "border-red-500" : "border-border"} focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all resize-none`}
                 />
+                {fieldErrors.message && <p className="mt-2 text-sm text-red-400">{fieldErrors.message}</p>}
               </div>
 
               <Button className="w-full" type="submit" size="lg" disabled={isLoading}>

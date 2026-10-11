@@ -153,9 +153,116 @@ class ProjectAPITests(APITestCase):
         self.project.refresh_from_db()
         self.assertEqual(self.project.id, project_id)
         self.assertEqual(self.project.title, 'Portfolio Redesign with New Image')
-        self.assertTrue(self.project.thumbnail_image.name.endswith('new-thumbnail.png'))
+        self.assertIn('new-thumbnail', self.project.thumbnail_image.name)
+        self.assertTrue(self.project.thumbnail_image.name.endswith('.png'))
         self.assertEqual(self.project.images.count(), 2)
         self.assertEqual(self.project.sections.count(), 2)
+
+    def test_admin_saves_project_sections_incrementally_without_duplicates(self):
+        admin = get_user_model().objects.create_user(
+            username='admin-user',
+            password='safe-password',
+            is_staff=True,
+        )
+        self.client.force_authenticate(admin)
+
+        create_response = self.client.post(
+            '/api/admin/projects/',
+            {
+                'title': 'Incremental Project',
+                'slug': 'incremental-project',
+                'short_description': 'Created with basic information only.',
+                'overview': 'The overview can be saved before related sections.',
+                'description': 'Main project description.',
+                'thumbnail_image': self.make_image_file('incremental-main.png'),
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED, create_response.data)
+        project_id = create_response.data['id']
+        self.assertEqual(create_response.data['features'], '')
+        self.assertEqual(create_response.data['highlights'], [])
+        self.assertEqual(create_response.data['images'], [])
+        self.assertEqual(create_response.data['sections'], [])
+
+        update_response = self.client.patch(
+            '/api/admin/projects/incremental-project/',
+            {
+                'technology_ids': [self.tech.id],
+                'features': 'Responsive layout\nAccessible controls',
+                'project_url': 'https://incremental.example.com',
+                'github_url': 'https://github.com/example/incremental',
+                'featured': True,
+                'is_published': True,
+            },
+            format='json',
+        )
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK, update_response.data)
+
+        highlight_responses = [
+            self.client.post(
+                '/api/admin/project-highlights/',
+                {'project': project_id, 'icon': 'clock', 'value': '24/7', 'title': title, 'description': 'Project metric.', 'order': order},
+                format='json',
+            )
+            for order, title in enumerate(('Availability', 'Support'))
+        ]
+        gallery_responses = [
+            self.client.post(
+                '/api/admin/project-images/',
+                {'project': project_id, 'image': self.make_image_file(f'gallery-{order}.png'), 'order': order},
+                format='multipart',
+            )
+            for order in range(2)
+        ]
+        section_responses = [
+            self.client.post(
+                '/api/admin/project-sections/',
+                {
+                    'project': project_id,
+                    'heading': f'Section {order}',
+                    'subtitle': f'Label {order}',
+                    'content': f'Content {order}',
+                    'layout_type': 'image_text_right',
+                    'order': order,
+                },
+                format='json',
+            )
+            for order in range(3)
+        ]
+
+        self.assertTrue(all(response.status_code == status.HTTP_201_CREATED for response in highlight_responses))
+        self.assertTrue(all(response.status_code == status.HTTP_201_CREATED for response in gallery_responses))
+        self.assertTrue(all(response.status_code == status.HTTP_201_CREATED for response in section_responses))
+
+        section_id = section_responses[1].data['id']
+        section_update = self.client.patch(
+            f'/api/admin/project-sections/{section_id}/',
+            {'heading': 'Updated Section 1', 'content': 'Updated only this section.'},
+            format='json',
+        )
+        self.assertEqual(section_update.status_code, status.HTTP_200_OK, section_update.data)
+
+        detail_response = self.client.get('/api/projects/incremental-project/')
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item['heading'] for item in detail_response.data['sections']], ['Section 0', 'Updated Section 1', 'Section 2'])
+        self.assertEqual([item['title'] for item in detail_response.data['highlights']], ['Availability', 'Support'])
+        self.assertEqual(len(detail_response.data['images']), 2)
+        self.assertEqual(detail_response.data['features'], 'Responsive layout\nAccessible controls')
+        self.assertEqual(detail_response.data['technologies'][0]['id'], self.tech.id)
+
+        self.client.delete(f"/api/admin/project-highlights/{highlight_responses[0].data['id']}/")
+        self.client.delete(f"/api/admin/project-images/{gallery_responses[0].data['id']}/")
+        self.client.delete(f'/api/admin/project-sections/{section_id}/')
+
+        project = Project.objects.get(pk=project_id)
+        self.assertEqual(project.highlights.count(), 1)
+        self.assertEqual(project.images.count(), 1)
+        self.assertEqual(project.sections.count(), 2)
+        self.assertIn('incremental-main', project.thumbnail_image.name)
+        self.assertTrue(project.thumbnail_image.name.endswith('.png'))
+        self.assertEqual(Project.objects.filter(slug='incremental-project').count(), 1)
 
     def test_project_detail_exposes_section_layout_and_highlights(self):
         ProjectHighlight.objects.create(

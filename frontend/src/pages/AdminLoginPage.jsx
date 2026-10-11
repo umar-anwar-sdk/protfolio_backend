@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { LockKeyhole, LogIn } from "lucide-react";
 import { isAdminAuthenticated, loginAdmin } from "@/services/authService";
+import { showToast } from "@/utils/toastNotifications";
 
 export function AdminLoginPage() {
   const navigate = useNavigate();
@@ -20,9 +21,12 @@ export function AdminLoginPage() {
 
     try {
       await loginAdmin(form);
+      showToast("Signed in successfully.", "success");
       navigate("/admin", { replace: true });
     } catch (err) {
-      setError(err.message || "Unable to sign in.");
+      const message = err.message || "Unable to sign in.";
+      setError(message);
+      showToast(message, "error");
     } finally {
       setIsSubmitting(false);
     }

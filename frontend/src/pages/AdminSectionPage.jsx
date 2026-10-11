@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, Pencil, Trash2, Save, X, Code2, Brain, Database, Globe, Server, Cpu, Cloud, ShieldCheck, Book, Briefcase, Award, Search, Mail, CheckCheck, Clock3, Phone, MapPin } from "lucide-react";
 import { getApiBaseUrl, getAssetUrl } from "@/api/client";
 import { createAdminResource, deleteAdminResource, fetchAdminResource, updateAdminResource } from "@/services/adminService";
+import { showToast } from "@/utils/toastNotifications";
 
 const sectionConfig = {
   profile: { label: "Profile", endpoint: "/api/admin/profile/" },
@@ -473,7 +474,7 @@ function ContactInformationAdminForm() {
   const loadContactInfo = async () => {
     setLoading(true);
     try {
-      const data = await fetchAdminResource("/api/admin/contact-information/");
+      const data = await fetchAdminResource("/api/admin/contact-information/", { suppressErrorToast: true });
       const next = data || form;
       setForm({
         email: next.email || "",
@@ -531,7 +532,10 @@ function ContactInformationAdminForm() {
     event.preventDefault();
     const nextErrors = validateForm();
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    if (Object.keys(nextErrors).length > 0) {
+      showToast("Please correct the highlighted fields before saving.", "warning");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -695,6 +699,7 @@ export function AdminSectionPage() {
   const [selectedHighlight, setSelectedHighlight] = useState(null);
   const [highlightErrors, setHighlightErrors] = useState({});
   const [highlightsLoading, setHighlightsLoading] = useState(false);
+  const [projectSaveStates, setProjectSaveStates] = useState({});
 
   useEffect(() => {
     let active = true;
@@ -810,6 +815,7 @@ export function AdminSectionPage() {
     });
     if (Object.keys(errs).length) {
       setHighlightErrors(errs);
+      showToast("Please complete the required highlight fields.", "warning");
       return;
     }
 
@@ -904,6 +910,91 @@ export function AdminSectionPage() {
     return payload;
   }
 
+  function setProjectSaveState(key, state) {
+    setProjectSaveStates((prev) => ({ ...prev, [key]: state }));
+  }
+
+  async function saveProjectPart(key, payload, fields, createIfMissing = false) {
+    if (!selectedItem?.id && !createIfMissing) {
+      setProjectSaveState(key, { loading: false, message: "Save basic information first.", error: true });
+      showToast("Save basic project information before editing this section.", "warning");
+      return;
+    }
+
+    setProjectSaveState(key, { loading: true, message: "", error: false });
+    setError("");
+
+    try {
+      const requestPayload = payload.thumbnail_image instanceof File
+        ? buildFormData(payload)
+        : Object.fromEntries(Object.entries(payload).filter(([field, value]) => (
+          !(fileFieldNames.has(field) && typeof value === "string") && value !== undefined
+        )));
+      const successMessage = key === "basic"
+        ? selectedItem?.id ? "Project updated successfully." : "Project created successfully."
+        : {
+          technologies: "Technologies saved successfully.",
+          features: "Features saved successfully.",
+          settings: "Project settings saved successfully.",
+        }[key] || "Project information saved successfully.";
+      const notifyOptions = { successMessage };
+      const saved = selectedItem?.id
+        ? await updateAdminResource(getDetailPath(selectedItem), requestPayload, notifyOptions)
+        : await createAdminResource(config.endpoint, requestPayload, notifyOptions);
+
+      setSelectedItem(saved);
+      setItems((prev) => {
+        const exists = prev.some((item) => item.id === saved.id);
+        return exists
+          ? prev.map((item) => (item.id === saved.id ? { ...item, ...saved } : item))
+          : [saved, ...prev];
+      });
+      setForm((prev) => ({
+        ...prev,
+        ...fields.reduce((result, field) => {
+          result[field] = saved[field] ?? prev[field];
+          return result;
+        }, {}),
+      }));
+      setProjectSaveState(key, { loading: false, message: "Saved successfully.", error: false });
+    } catch (err) {
+      const apiErrors = err?.fields || {};
+      const normalized = {};
+      Object.entries(apiErrors).forEach(([fieldName, fieldValue]) => {
+        normalized[fieldName] = normalizeFieldError(fieldValue);
+      });
+      setFieldErrors((prev) => ({ ...prev, ...normalized }));
+      setProjectSaveState(key, { loading: false, message: err.message || "Unable to save changes.", error: true });
+    }
+  }
+
+  async function saveBasicProjectInformation() {
+    const fields = ["title", "slug", "short_description", "overview", "description", "thumbnail_image"];
+    const nextErrors = buildValidationErrors(form);
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      showToast("Please correct the highlighted fields before saving.", "warning");
+      setProjectSaveState("basic", { loading: false, message: "Complete the required fields.", error: true });
+      return;
+    }
+
+    const payload = fields.reduce((result, field) => {
+      result[field] = form[field] ?? "";
+      return result;
+    }, {});
+    await saveProjectPart("basic", payload, fields, true);
+  }
+
+  function renderProjectSaveStatus(key) {
+    const state = projectSaveStates[key];
+    if (!state?.message) return null;
+    return (
+      <p role="status" className={`text-sm ${state.error ? "text-red-300" : "text-emerald-300"}`}>
+        {state.message}
+      </p>
+    );
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     if (isReadOnlySection) return;
@@ -911,11 +1002,13 @@ export function AdminSectionPage() {
     const nextErrors = buildValidationErrors(form);
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
+      showToast("Please correct the highlighted fields before saving.", "warning");
       return;
     }
 
     setSaving(true);
     setError("");
+    let requestPayload;
 
     try {
       let payloadObj = { ...form };
@@ -928,7 +1021,6 @@ export function AdminSectionPage() {
       const hasFile = section === "projects"
         ? payloadObj.thumbnail_image instanceof File
         : Array.from(payload.entries()).some(([key]) => fileFieldNames.has(key));
-      let requestPayload;
       if (hasFile) {
         requestPayload = payload;
       } else {
@@ -1107,13 +1199,15 @@ export function AdminSectionPage() {
   function ProjectGallery({ projectItem }) {
     const [files, setFiles] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState("");
+    const [error, setError] = useState(false);
 
     function onFiles(e) { setFiles(Array.from(e.target.files || [])); }
 
     async function uploadFiles() {
-      if (!projectItem || !projectItem.id) { alert('Save project before uploading gallery images.'); return; }
       if (!files.length) return;
       setLoading(true);
+      setMessage("");
       try {
         for (const f of files) {
           const fd = new FormData();
@@ -1122,14 +1216,17 @@ export function AdminSectionPage() {
           fd.append('title', '');
           fd.append('description', '');
           fd.append('order', String((projectItem.images?.length || 0) + 1));
-          await createAdminResource('/api/admin/project-images/', fd);
+          await createAdminResource('/api/admin/project-images/', fd, { successMessage: false });
         }
         const refreshed = await fetchAdminResource(`/api/admin/projects/${projectItem.slug}/`);
         setSelectedItem(refreshed);
-        setForm((prev) => ({ ...prev, ...refreshed }));
         setFiles([]);
+        setError(false);
+        setMessage("Gallery saved successfully.");
+        showToast("Gallery images uploaded successfully.", "success");
       } catch (err) {
-        alert(err.message || 'Upload failed');
+        setError(true);
+        setMessage(err.message || "Unable to save gallery.");
       } finally { setLoading(false); }
     }
 
@@ -1139,9 +1236,11 @@ export function AdminSectionPage() {
         await deleteAdminResource(`/api/admin/project-images/${id}/`);
         const refreshed = await fetchAdminResource(`/api/admin/projects/${projectItem.slug}/`);
         setSelectedItem(refreshed);
-        setForm((prev) => ({ ...prev, ...refreshed }));
+        setError(false);
+        setMessage("Gallery image deleted.");
       } catch (err) {
-        // ignore
+        setError(true);
+        setMessage(err.message || "Unable to delete gallery image.");
       }
     }
 
@@ -1165,9 +1264,10 @@ export function AdminSectionPage() {
         )}
 
         <div className="flex items-center gap-3">
-          <input type="file" multiple accept="image/*" onChange={onFiles} />
-          <button type="button" onClick={uploadFiles} disabled={loading} className="rounded-xl bg-primary px-3 py-2 text-primary-foreground">Upload</button>
+          <input type="file" multiple accept="image/*" onChange={onFiles} disabled={!projectItem?.id || loading} />
+          <button type="button" onClick={uploadFiles} disabled={!projectItem?.id || loading || !files.length} className="rounded-xl bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50">{loading ? "Saving..." : "Save Gallery"}</button>
         </div>
+        {message && <p role="status" className={`mt-3 text-sm ${error ? "text-red-300" : "text-emerald-300"}`}>{message}</p>}
       </div>
     );
   }
@@ -1176,6 +1276,8 @@ export function AdminSectionPage() {
     const [formHighlight, setFormHighlight] = useState({ icon: '', value: '', title: '', description: '', order: 0 });
     const [editId, setEditId] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState("");
+    const [error, setError] = useState(false);
 
     useEffect(() => {
       if (projectItem) {
@@ -1191,9 +1293,14 @@ export function AdminSectionPage() {
     }
 
     async function saveHighlight() {
-      if (!projectItem || !projectItem.id) { alert('Save project before adding highlights.'); return; }
-      if (!formHighlight.title.trim()) { alert('Highlight title is required.'); return; }
+      if (!formHighlight.title.trim()) {
+        setError(true);
+        setMessage("Highlight title is required.");
+        showToast("Please enter a title for this project highlight.", "warning");
+        return;
+      }
       setLoading(true);
+      setMessage("");
       try {
         const payload = {
           project: projectItem.id,
@@ -1205,17 +1312,19 @@ export function AdminSectionPage() {
         };
 
         if (editId) {
-          await updateAdminResource(`/api/admin/project-highlights/${editId}/`, payload);
+          await updateAdminResource(`/api/admin/project-highlights/${editId}/`, payload, { successMessage: "Project highlights saved successfully." });
         } else {
-          await createAdminResource('/api/admin/project-highlights/', payload);
+          await createAdminResource('/api/admin/project-highlights/', payload, { successMessage: "Project highlights saved successfully." });
         }
 
         const refreshed = await fetchAdminResource(`/api/admin/projects/${projectItem.slug}/`);
         setSelectedItem(refreshed);
-        setForm((prev) => ({ ...prev, ...refreshed }));
         resetForm();
+        setError(false);
+        setMessage("Highlights saved successfully.");
       } catch (err) {
-        alert(err.message || 'Unable to save highlight');
+        setError(true);
+        setMessage(err.message || "Unable to save highlight.");
       } finally { setLoading(false); }
     }
 
@@ -1225,8 +1334,12 @@ export function AdminSectionPage() {
         await deleteAdminResource(`/api/admin/project-highlights/${id}/`);
         const refreshed = await fetchAdminResource(`/api/admin/projects/${projectItem.slug}/`);
         setSelectedItem(refreshed);
-        setForm((prev) => ({ ...prev, ...refreshed }));
-      } catch (err) {}
+        setError(false);
+        setMessage("Highlight deleted.");
+      } catch (err) {
+        setError(true);
+        setMessage(err.message || "Unable to delete highlight.");
+      }
     }
 
     return (
@@ -1255,10 +1368,12 @@ export function AdminSectionPage() {
           <textarea className="md:col-span-2 rounded-xl border border-border px-3 py-2" placeholder="Description" value={formHighlight.description} onChange={(e) => updateField('description', e.target.value)} rows={3} />
           <div className="md:col-span-2 flex items-center gap-3">
             <input type="number" min={0} value={formHighlight.order} onChange={(e) => updateField('order', Number(e.target.value))} className="rounded-xl border border-border px-3 py-2 w-24" />
-            <button type="button" onClick={saveHighlight} disabled={loading} className="rounded-xl bg-primary px-3 py-2 text-primary-foreground">{editId ? 'Update highlight' : 'Add highlight'}</button>
+            <button type="button" onClick={saveHighlight} disabled={!projectItem?.id || loading} className="rounded-xl bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50">{loading ? "Saving..." : "Save Highlights"}</button>
+            {!editId && <button type="button" onClick={resetForm} disabled={!projectItem?.id || loading} className="rounded-xl border border-border px-3 py-2 disabled:opacity-50">Add Highlight</button>}
             {editId && <button type="button" onClick={resetForm} className="rounded-xl border border-border px-3 py-2">Cancel</button>}
           </div>
         </div>
+        {message && <p role="status" className={`text-sm ${error ? "text-red-300" : "text-emerald-300"}`}>{message}</p>}
       </div>
     );
   }
@@ -1267,6 +1382,8 @@ export function AdminSectionPage() {
     const [formSec, setFormSec] = useState({ heading: '', subtitle: '', content: '', layout_type: 'image_text_right', image: null, order: 0 });
     const [editId, setEditId] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState("");
+    const [error, setError] = useState(false);
 
     useEffect(() => {
       if (projectItem) {
@@ -1282,9 +1399,14 @@ export function AdminSectionPage() {
     }
 
     async function saveSection() {
-      if (!projectItem || !projectItem.id) { alert('Save project before adding sections.'); return; }
-      if (!formSec.heading.trim()) { alert('Section heading is required.'); return; }
+      if (!formSec.heading.trim()) {
+        setError(true);
+        setMessage("Section heading is required.");
+        showToast("Please enter a heading for this case study section.", "warning");
+        return;
+      }
       setLoading(true);
+      setMessage("");
       try {
         const fd = new FormData();
         fd.append('project', String(projectItem.id));
@@ -1296,17 +1418,19 @@ export function AdminSectionPage() {
         if (formSec.image instanceof File) fd.append('image', formSec.image);
 
         if (editId) {
-          await updateAdminResource(`/api/admin/project-sections/${editId}/`, fd);
+          await updateAdminResource(`/api/admin/project-sections/${editId}/`, fd, { successMessage: "Case study sections saved successfully." });
         } else {
-          await createAdminResource('/api/admin/project-sections/', fd);
+          await createAdminResource('/api/admin/project-sections/', fd, { successMessage: "Case study sections saved successfully." });
         }
 
         const refreshed = await fetchAdminResource(`/api/admin/projects/${projectItem.slug}/`);
         setSelectedItem(refreshed);
-        setForm((prev) => ({ ...prev, ...refreshed }));
         resetForm();
+        setError(false);
+        setMessage("Sections saved successfully.");
       } catch (err) {
-        alert(err.message || 'Unable to save section');
+        setError(true);
+        setMessage(err.message || "Unable to save section.");
       } finally { setLoading(false); }
     }
 
@@ -1316,8 +1440,12 @@ export function AdminSectionPage() {
         await deleteAdminResource(`/api/admin/project-sections/${id}/`);
         const refreshed = await fetchAdminResource(`/api/admin/projects/${projectItem.slug}/`);
         setSelectedItem(refreshed);
-        setForm((prev) => ({ ...prev, ...refreshed }));
-      } catch (err) {}
+        setError(false);
+        setMessage("Section deleted.");
+      } catch (err) {
+        setError(true);
+        setMessage(err.message || "Unable to delete section.");
+      }
     }
 
     return (
@@ -1382,11 +1510,13 @@ export function AdminSectionPage() {
             </select>
             <input type="number" min={0} value={formSec.order} onChange={(e) => updateSecField('order', Number(e.target.value))} className="rounded-xl border border-border px-3 py-2 w-full" />
           </div>
-          <input type="file" accept="image/*" onChange={(e) => updateSecField('image', e.target.files?.[0] || null)} />
+          <input type="file" accept="image/*" disabled={!projectItem?.id || loading} onChange={(e) => updateSecField('image', e.target.files?.[0] || null)} />
           <div className="flex items-center gap-2">
-            <button type="button" onClick={saveSection} disabled={loading} className="rounded-xl bg-primary px-3 py-2 text-primary-foreground">{editId ? 'Update section' : 'Add section'}</button>
+            <button type="button" onClick={resetForm} disabled={!projectItem?.id || loading} className="rounded-xl border border-border px-3 py-2 disabled:opacity-50">Add Section</button>
+            <button type="button" onClick={saveSection} disabled={!projectItem?.id || loading} className="rounded-xl bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50">{loading ? "Saving..." : "Save Sections"}</button>
             {editId && <button type="button" onClick={resetForm} className="rounded-xl border border-border px-3 py-2">Cancel</button>}
           </div>
+          {message && <p role="status" className={`text-sm ${error ? "text-red-300" : "text-emerald-300"}`}>{message}</p>}
         </div>
       </div>
       </>
@@ -1536,11 +1666,26 @@ export function AdminSectionPage() {
                   </div>
                 </div>
 
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={saveBasicProjectInformation} disabled={projectSaveStates.basic?.loading} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-70">
+                    <Save className="h-4 w-4" />
+                    {projectSaveStates.basic?.loading ? "Saving..." : "Save Basic Information"}
+                  </button>
+                  {renderProjectSaveStatus("basic")}
+                </div>
+
                 {/* Technologies */}
                 <div className="rounded-xl border border-border bg-surface p-4">
                   <h3 className="text-sm font-medium text-secondary-foreground mb-3">Technologies</h3>
                   <div className="grid gap-2">
                     <TechsPicker updateField={updateField} selectedTechs={(form.technologies || []).map((t) => t.id)} />
+                  </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <button type="button" onClick={() => saveProjectPart("technologies", { technology_ids: getTechnologyIds(form.technologies || []) }, ["technologies"])} disabled={!selectedItem?.id || projectSaveStates.technologies?.loading} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
+                      <Save className="h-4 w-4" />
+                      {projectSaveStates.technologies?.loading ? "Saving..." : "Save Technologies"}
+                    </button>
+                    {renderProjectSaveStatus("technologies")}
                   </div>
                 </div>
 
@@ -1548,6 +1693,13 @@ export function AdminSectionPage() {
                 <div className="rounded-xl border border-border bg-surface p-4">
                   <h3 className="text-sm font-medium text-secondary-foreground mb-3">Features</h3>
                   <ProjectFeatures featuresText={form.features || ''} onChange={(val) => updateField('features', val)} />
+                  <div className="mt-4 flex items-center gap-3">
+                    <button type="button" onClick={() => saveProjectPart("features", { features: form.features || "" }, ["features"])} disabled={!selectedItem?.id || projectSaveStates.features?.loading} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
+                      <Save className="h-4 w-4" />
+                      {projectSaveStates.features?.loading ? "Saving..." : "Save Features"}
+                    </button>
+                    {renderProjectSaveStatus("features")}
+                  </div>
                 </div>
 
                 {/* Project Highlights */}
@@ -1589,6 +1741,18 @@ export function AdminSectionPage() {
                       <span>Published</span>
                     </label>
                   </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <button type="button" onClick={() => saveProjectPart("settings", {
+                      project_url: form.project_url || "",
+                      github_url: form.github_url || "",
+                      featured: Boolean(form.featured),
+                      is_published: Boolean(form.is_published),
+                    }, ["project_url", "github_url", "featured", "is_published"])} disabled={!selectedItem?.id || projectSaveStates.settings?.loading} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
+                      <Save className="h-4 w-4" />
+                      {projectSaveStates.settings?.loading ? "Saving..." : "Save Settings"}
+                    </button>
+                    {renderProjectSaveStatus("settings")}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-end gap-3">
@@ -1598,10 +1762,6 @@ export function AdminSectionPage() {
                       Cancel
                     </button>
                   )}
-                  <button onClick={handleSubmit} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-70">
-                    <Save className="h-4 w-4" />
-                    {saving ? "Saving..." : selectedItem ? "Update" : "Create"}
-                  </button>
                 </div>
               </div>
             </section>
